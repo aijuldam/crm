@@ -13,18 +13,38 @@ import {
   ShieldCheck,
   Settings,
   ChevronRight,
+  Send,
+  LayoutTemplate,
+  BarChart3,
+  ShieldBan,
+  Activity,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const NAV = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { label: 'Contacts', href: '/contacts', icon: Users },
-  { label: 'Companies', href: '/companies', icon: Building2 },
-  { label: 'Projects', href: '/projects', icon: Folders },
-  { label: 'Lists', href: '/lists', icon: List },
-  { label: 'Segments', href: '/segments', icon: Filter },
-  { label: 'Forms', href: '/forms', icon: FileText },
-  { label: 'Compliance', href: '/compliance', icon: ShieldCheck },
+const NAV_GROUPS = [
+  {
+    label: 'CRM',
+    items: [
+      { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { label: 'Contacts', href: '/contacts', icon: Users },
+      { label: 'Companies', href: '/companies', icon: Building2 },
+      { label: 'Projects', href: '/projects', icon: Folders },
+      { label: 'Lists', href: '/lists', icon: List },
+      { label: 'Segments', href: '/segments', icon: Filter },
+      { label: 'Forms', href: '/forms', icon: FileText },
+      { label: 'Compliance', href: '/compliance', icon: ShieldCheck },
+    ],
+  },
+  {
+    label: 'Email',
+    items: [
+      { label: 'Campaigns', href: '/campaigns', icon: Send },
+      { label: 'Templates', href: '/templates', icon: LayoutTemplate },
+      { label: 'Suppression', href: '/suppression', icon: ShieldBan },
+      { label: 'Deliverability', href: '/deliverability', icon: Activity },
+      { label: 'Reports', href: '/reports', icon: BarChart3 },
+    ],
+  },
 ]
 
 export function Sidebar() {
@@ -49,26 +69,35 @@ export function Sidebar() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-0.5">
-        {NAV.map(({ label, href, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(href + '/')
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors group',
-                active
-                  ? 'bg-slate-800 text-white'
-                  : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              )}
-            >
-              <Icon className="h-4 w-4 flex-shrink-0" />
-              <span className="flex-1">{label}</span>
-              {active && <ChevronRight className="h-3 w-3 opacity-50" />}
-            </Link>
-          )
-        })}
+      <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+        {NAV_GROUPS.map(group => (
+          <div key={group.label}>
+            <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-widest text-slate-600">
+              {group.label}
+            </p>
+            <div className="space-y-0.5">
+              {group.items.map(({ label, href, icon: Icon }) => {
+                const active = pathname === href || pathname.startsWith(href + '/')
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    className={cn(
+                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors group',
+                      active
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-400 hover:bg-slate-800 hover:text-white'
+                    )}
+                  >
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    <span className="flex-1">{label}</span>
+                    {active && <ChevronRight className="h-3 w-3 opacity-50" />}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
       {/* Footer */}
