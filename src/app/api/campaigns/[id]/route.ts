@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CAMPAIGNS, MOCK_CAMPAIGN_RUNS } from '@/lib/mock-data-campaigns'
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 
-function isSupabaseConfigured() {
-  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-}
-
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'campaigns:read')
+  if (isAuthError(auth)) return auth
   const { id } = await params
 
   if (!isSupabaseConfigured()) {
@@ -19,6 +19,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'campaigns:write')
+  if (isAuthError(auth)) return auth
   const { id } = await params
   const body = await req.json()
 
@@ -31,7 +33,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ error: 'Not implemented' }, { status: 501 })
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'campaigns:write')
+  if (isAuthError(auth)) return auth
   const { id } = await params
 
   if (!isSupabaseConfigured()) {

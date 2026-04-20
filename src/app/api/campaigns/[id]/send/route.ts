@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CAMPAIGNS } from '@/lib/mock-data-campaigns'
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
+import { logger, AuditEvent } from '@/lib/logger'
 
-function isSupabaseConfigured() {
-  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-}
-
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'campaigns:send')
+  if (isAuthError(auth)) return auth
   const { id } = await params
 
   if (!isSupabaseConfigured()) {
@@ -14,6 +15,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     if (campaign.status !== 'draft' && campaign.status !== 'scheduled') {
       return NextResponse.json({ error: 'Campaign cannot be sent in its current state' }, { status: 422 })
     }
+    logger.audit(AuditEvent.CAMPAIGN_SENT, { campaignId: id, userId: auth.userId })
     const run = {
       id: Math.random().toString(36).slice(2),
       campaign_id: id,

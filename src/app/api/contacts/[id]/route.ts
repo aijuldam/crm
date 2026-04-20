@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CONTACTS } from '@/lib/mock-data'
 import { normalizeEmail } from '@/lib/utils'
-
-function isSupabaseConfigured() {
-  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 
 interface Props { params: Promise<{ id: string }> }
 
-export async function GET(_req: NextRequest, { params }: Props) {
+export async function GET(req: NextRequest, { params }: Props) {
+  const auth = await requireAuth(req, 'contacts:read')
+  if (isAuthError(auth)) return auth
   const { id } = await params
 
   if (isSupabaseConfigured()) {
@@ -30,6 +30,8 @@ export async function GET(_req: NextRequest, { params }: Props) {
 }
 
 export async function PATCH(req: NextRequest, { params }: Props) {
+  const auth = await requireAuth(req, 'contacts:write')
+  if (isAuthError(auth)) return auth
   const { id } = await params
   const body = await req.json()
 
@@ -56,7 +58,9 @@ export async function PATCH(req: NextRequest, { params }: Props) {
   return NextResponse.json({ ...contact, ...body, updated_at: new Date().toISOString() })
 }
 
-export async function DELETE(_req: NextRequest, { params }: Props) {
+export async function DELETE(req: NextRequest, { params }: Props) {
+  const auth = await requireAuth(req, 'contacts:write')
+  if (isAuthError(auth)) return auth
   const { id } = await params
 
   if (isSupabaseConfigured()) {

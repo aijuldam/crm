@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { normalizeEmail } from '@/lib/utils'
 import { MOCK_CONTACTS } from '@/lib/mock-data'
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 import type { ContactFilters } from '@/lib/types'
 
-// Extension point: swap mock arrays for Supabase queries when env vars are present.
-function isSupabaseConfigured() {
-  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
-
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'contacts:read')
+  if (isAuthError(auth)) return auth
+
   const { searchParams } = req.nextUrl
   const filters: ContactFilters = {
     search: searchParams.get('search') ?? undefined,
@@ -64,6 +64,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'contacts:write')
+  if (isAuthError(auth)) return auth
   const body = await req.json()
 
   if (!body.email) {

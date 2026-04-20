@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { normalizeEmail } from '@/lib/utils'
+import { requireAuth, isAuthError } from '@/lib/auth/api'
 
-// CSV import endpoint — expects multipart/form-data with a 'file' field
-// Column mapping: email (required), first_name, last_name, phone, country, language, lifecycle_stage, source
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'contacts:write')
+  if (isAuthError(auth)) return auth
   const formData = await req.formData()
   const file = formData.get('file') as File | null
   const projectId = formData.get('project_id') as string | null
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     contacts.push(contact)
   }
 
-  const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL
+  const isSupabaseConfigured = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (isSupabaseConfigured && contacts.length > 0) {
     const { createClient } = await import('@/lib/supabase/server')

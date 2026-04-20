@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireWebhookSecret } from '@/lib/auth/api'
+import { logger, AuditEvent } from '@/lib/logger'
 
-// Webhook ingestion endpoint — receives events from ESP (e.g. Postmark, SendGrid)
 export async function POST(req: NextRequest) {
+  const authError = requireWebhookSecret(req)
+  if (authError) return authError
+  logger.audit(AuditEvent.WEBHOOK_RECEIVED, { path: '/api/email-events' })
   const body = await req.json()
 
   // Normalise to array for batch webhooks

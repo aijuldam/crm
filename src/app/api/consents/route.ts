@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_CONSENTS } from '@/lib/mock-data'
-
-function isSupabaseConfigured() {
-  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'consents:read')
+  if (isAuthError(auth)) return auth
   const { searchParams } = req.nextUrl
   const contact_id = searchParams.get('contact_id') ?? ''
   const project_id = searchParams.get('project_id') ?? ''
@@ -39,6 +39,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'consents:write')
+  if (isAuthError(auth)) return auth
   const body = await req.json()
 
   const required = ['contact_id', 'project_id', 'channel', 'consent_status']

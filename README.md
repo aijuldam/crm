@@ -173,10 +173,37 @@ npm run dev        # mock mode — no Supabase needed
 
 # With Supabase:
 cp .env.example .env.local
-# Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Fill in NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
 # Apply migrations in order: 001 → 002 → 003
+npm run dev
 ```
 
 ## Mock mode
 
-Every API route calls `isSupabaseConfigured()` before any DB access. If the env vars are absent, the route falls back to the in-memory mock data in `src/lib/mock-data*.ts`. The full UI is usable for demos and local development without any backend setup.
+Every API route calls `isSupabaseConfigured()` (from `src/lib/config.ts`) before any DB access. If the env vars are absent, the route falls back to the in-memory mock data in `src/lib/mock-data*.ts`. Authentication is also bypassed in mock mode — all requests are treated as `admin`. The full UI is usable for demos and local development without any backend setup.
+
+**Never run mock mode in production.** Set `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY` to enable auth and database persistence.
+
+## Security
+
+See [`SECURITY.md`](./SECURITY.md) for the full security checklist and manual provider configuration steps.
+
+### Quick summary
+
+| Layer | Implementation |
+|---|---|
+| Page auth | `src/proxy.ts` — unauthenticated users → `/login` |
+| API auth | `src/lib/auth/api.ts` — `requireAuth(req, permission)` on every route |
+| RBAC | `src/lib/auth/rbac.ts` — 4 roles: `admin`, `marketing`, `sales`, `viewer` |
+| Env validation | `src/lib/config.ts` — Zod schema, fails fast in production |
+| Security headers | `next.config.ts` — CSP, HSTS, X-Frame-Options, nosniff, Referrer-Policy |
+| Audit logging | `src/lib/logger.ts` — structured JSON in production, named `AuditEvent` constants |
+| Webhook auth | `X-Webhook-Secret` header check on `/api/email-events` |
+| Cron auth | `Authorization: Bearer` check on `/api/sync` |
+
+### Generating secrets
+
+```bash
+# WEBHOOK_SECRET and CRON_SECRET (≥32 chars each)
+openssl rand -hex 32
+```

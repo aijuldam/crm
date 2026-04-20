@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireCronSecret } from '@/lib/auth/api'
 
-// Sync job trigger — fetches delivery states/events from ESP and ingests them
 export async function POST(req: NextRequest) {
+  const authError = requireCronSecret(req)
+  if (authError) return authError
   const body = await req.json().catch(() => ({}))
   const { campaign_run_id } = body
 

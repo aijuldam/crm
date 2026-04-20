@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_PROJECTS } from '@/lib/mock-data'
 import { slugify } from '@/lib/utils'
-
-function isSupabaseConfigured() {
-  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'projects:read')
+  if (isAuthError(auth)) return auth
   const { searchParams } = req.nextUrl
   const includeInactive = searchParams.get('include_inactive') === 'true'
 
@@ -26,6 +26,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'projects:write')
+  if (isAuthError(auth)) return auth
   const body = await req.json()
 
   if (!body.name) return NextResponse.json({ error: 'Name is required' }, { status: 400 })

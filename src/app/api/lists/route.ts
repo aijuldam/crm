@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_LISTS } from '@/lib/mock-data'
-
-function isSupabaseConfigured() {
-  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'lists:read')
+  if (isAuthError(auth)) return auth
   const { searchParams } = req.nextUrl
   const project_id = searchParams.get('project_id') ?? ''
 
@@ -28,6 +28,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireAuth(req, 'lists:write')
+  if (isAuthError(auth)) return auth
   const body = await req.json()
   if (!body.name || !body.project_id) {
     return NextResponse.json({ error: 'name and project_id are required' }, { status: 400 })

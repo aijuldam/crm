@@ -1,11 +1,11 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_DASHBOARD_STATS } from '@/lib/mock-data'
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
 
-function isSupabaseConfigured() {
-  return !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-}
-
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const auth = await requireAuth(req, 'dashboard:read')
+  if (isAuthError(auth)) return auth
   if (isSupabaseConfigured()) {
     const { createClient } = await import('@/lib/supabase/server')
     const supabase = await createClient()

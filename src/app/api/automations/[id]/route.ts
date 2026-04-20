@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { MOCK_WORKFLOWS, MOCK_WORKFLOW_ANALYTICS } from '@/lib/mock-data-automations'
-
-function isSupabaseConfigured() {
-  return !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
-}
+import { requireAuth, isAuthError } from '@/lib/auth/api'
+import { isSupabaseConfigured } from '@/lib/config'
+import { logger, AuditEvent } from '@/lib/logger'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'automations:read')
+  if (isAuthError(auth)) return auth
   const { id } = await params
   const { searchParams } = new URL(req.url)
   const include = searchParams.get('include') ?? ''
@@ -25,8 +26,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'automations:write')
+  if (isAuthError(auth)) return auth
   const { id } = await params
   const body = await req.json()
+  if (body.status === 'active') {
+    logger.audit(AuditEvent.WORKFLOW_ACTIVATED, { workflowId: id, userId: auth.userId })
+  }
 
   if (!isSupabaseConfigured()) {
     const workflow = MOCK_WORKFLOWS.find(w => w.id === id)
@@ -39,7 +45,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   return NextResponse.json({ error: 'Not implemented' }, { status: 501 })
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireAuth(req, 'automations:write')
+  if (isAuthError(auth)) return auth
   const { id } = await params
 
   if (!isSupabaseConfigured()) {

@@ -56,7 +56,11 @@ const NAV_GROUPS = [
   },
 ]
 
-export function Sidebar() {
+interface SidebarProps {
+  user?: { name: string; email: string } | null
+}
+
+export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -118,15 +122,17 @@ export function Sidebar() {
           <Settings className="h-4 w-4" />
           Settings
         </Link>
-        <div className="mt-3 flex items-center gap-2.5 px-3 py-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white">
-            A
+        {user && (
+          <div className="mt-3 flex items-center gap-2.5 px-3 py-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-indigo-600 text-xs font-bold text-white shrink-0">
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium text-white truncate">{user.name}</p>
+              <p className="text-xs text-slate-500 truncate">{user.email}</p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-white truncate">Admin</p>
-            <p className="text-xs text-slate-500 truncate">admin@company.com</p>
-          </div>
-        </div>
+        )}
       </div>
     </aside>
   )
