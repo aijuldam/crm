@@ -18,6 +18,8 @@ import {
   BarChart3,
   ShieldBan,
   Activity,
+  Zap,
+  Radio,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -43,6 +45,13 @@ const NAV_GROUPS = [
       { label: 'Suppression', href: '/suppression', icon: ShieldBan },
       { label: 'Deliverability', href: '/deliverability', icon: Activity },
       { label: 'Reports', href: '/reports', icon: BarChart3 },
+    ],
+  },
+  {
+    label: 'Automations',
+    items: [
+      { label: 'Workflows',  href: '/automations', icon: Zap },
+      { label: 'Events',     href: '/events',      icon: Radio },
     ],
   },
 ]

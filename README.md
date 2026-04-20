@@ -1,41 +1,119 @@
-# CRM Platform — Phase 1
+# Internal CRM Platform
 
-Internal CRM built on **Next.js 15 + TypeScript + Supabase/Postgres**.
-Multi-project, Europe-first, GDPR-aware. B2C-primary with B2B foundation.
+A modular, multi-project CRM built with Next.js 16, TypeScript, Tailwind CSS, and Supabase. Designed for European B2C/B2B operations with GDPR-first contact management, full email campaign tooling, and event-driven automation.
 
----
-
-## Quick start
-
-```bash
-cp .env.example .env.local   # fill in Supabase credentials
-npm install
-npm run dev                   # → http://localhost:3000
-```
-
-> **Without Supabase**: The app runs fully with mock data — no `.env.local` needed.
-
-Run the database:
-1. Paste `supabase/migrations/001_initial_schema.sql` into Supabase SQL editor
-2. Optionally run `supabase/seed.sql` for European test data
+Works fully in **mock mode** (no Supabase credentials required). Wire up Supabase for production persistence.
 
 ---
 
-## Pages
+## Phased architecture
 
-| Route | Description |
+### Phase 1 — CRM foundation
+
+**Goal:** Multi-project contact and company management with GDPR consent tracking.
+
+**Schema** (`001_initial_schema.sql`): `projects`, `contacts` (with `email_normalized` UNIQUE dedup key), `companies`, `contact_projects`, `lists`, `contact_lists`, `segments`, `consents`, `forms`, `submissions`, `activities`, `tasks`, `deals`, `crm_users`, `memberships`.
+
+**Key design decisions:**
+- `email_normalized` (lowercase + trimmed) enforced at DB level as the universal deduplication key
+- Consent records store country, language, legal basis, and privacy notice version **at event time** — never derived from the current contact profile
+- `withdrawn_at` is stamped on opt-out but the row is never deleted (GDPR audit trail)
+- Row Level Security enabled on all tables; service role key used server-side only
+- European contact model: residency country, preferred language, timezone, currency, market, lifecycle stage
+
+**Pages:** Dashboard · Contacts · Companies · Projects · Lists · Segments · Forms · Compliance
+
+**API routes:** `/api/contacts` · `/api/contacts/[id]` · `/api/contacts/import` (CSV batch upsert) · `/api/companies` · `/api/projects` · `/api/lists` · `/api/segments` · `/api/forms` · `/api/consents` · `/api/dashboard`
+
+---
+
+### Phase 2 — Campaign management
+
+**Goal:** Full email campaign lifecycle — templates, one-off sends, suppression, and deliverability monitoring.
+
+**Schema** (`002_campaigns.sql`): `email_templates` (block-based + HTML override + language variants), `campaigns`, `campaign_runs`, `email_events` (append-only, deduplicated via `provider_event_id`), `suppression_list` (global/project/list scope), `bounce_events`, `complaint_events`, `campaign_run_metrics` (materialised).
+
+**Key design decisions:**
+- Block-based email editor: typed block system (header, text, button, image, divider, spacer, footer, columns) stored as JSONB
+- `compute_run_metrics(run_id)` Postgres function — materialised metrics avoid COUNT(*) on `email_events` at query time
+- Auto-suppression via DB triggers on hard bounce and complaint insert
+- GDPR-safe send eligibility pipeline (see `src/lib/email-eligibility.ts`): hard bounce → complaint → global suppression → project suppression → marketing consent check
+- Marketing vs operational email separation — operational bypasses consent check
+- `provider_event_id` UNIQUE constraint deduplicates webhook event deliveries
+
+**Pages:** Campaigns · Campaign builder (5-step wizard) · Campaign detail · Templates · Template editor · Suppression center · Deliverability · Reports
+
+**API routes:** `/api/campaigns` · `/api/campaigns/[id]` · `/api/campaigns/[id]/send` · `/api/templates` · `/api/templates/[id]` · `/api/suppression` · `/api/email-events` · `/api/sync` · `/api/reports`
+
+---
+
+### Phase 3 — Automations & event engine
+
+**Goal:** Event-driven workflow automation, nurture sequences, and trigger-based email sending.
+
+**Schema** (`003_automations.sql`):
+- `events` — append-only contact event log (`idempotency_key` UNIQUE for client-side dedup)
+- `automation_workflows` — definitions with trigger config, re-entry rules, frequency caps, goal events, exclusion lists
+- `workflow_steps` — graph nodes with polymorphic `config` JSONB (shape varies by step type)
+- `workflow_enrollments` — one active row per contact per workflow; soft-unique prevents duplicate active enrollments
+- `workflow_step_logs` — append-only execution audit log driving step funnel analytics
+- `workflow_metrics` — materialised enrollment/completion counts via `compute_workflow_metrics()`
+
+**Supported event types:** `form_submitted` · `quiz_completed` · `guide_downloaded` · `page_viewed` · `form_started` · `form_abandoned` · `contact_inactive` · `link_clicked` · `email_opened` · `purchase_completed` · `custom`
+
+**Workflow step types:**
+
+| Type | Description |
 |---|---|
-| `/dashboard` | KPIs, contact growth, lifecycle and consent charts |
-| `/contacts` | Searchable/filterable contact list with CSV import |
-| `/contacts/new` | Create contact with full European field set |
-| `/contacts/[id]` | Contact detail: profile, consents, activity |
-| `/companies` | Company list with VAT status |
-| `/companies/[id]` | Company detail |
-| `/projects` | Project cards (one per market/brand) |
-| `/lists` | Static subscriber lists |
-| `/segments` | Dynamic segments with condition builder |
-| `/forms` | Ingestion forms |
-| `/compliance` | Full consent audit table |
+| `trigger` | Entry point — fires on a contact event |
+| `delay` | Wait N minutes / hours / days / weeks |
+| `condition` | Evaluate contact conditions without branching |
+| `branch` | Split flow into yes/no paths |
+| `send_email` | Send a marketing or operational email |
+| `wait_for_event` | Pause until event fires or timeout expires |
+| `add_to_list` | Add contact to a list |
+| `remove_from_list` | Remove contact from a list |
+| `create_task` | Create a CRM task |
+| `update_field` | Update a contact field |
+| `exit` | End the workflow |
+
+**Branch fields:** `country` · `language` · `lifecycle_stage` · `consent_status` · `event_type` · `tag` · `custom_field`
+
+**Safety rails:**
+- `stop_on_unsubscribe` — DB trigger auto-exits all active marketing enrollments when consent is withdrawn
+- `stop_on_conversion` — exits when goal event fires
+- `frequency_cap_per_day` — per-contact daily email cap across all workflow steps
+- `exclusion_list_id` — blocks enrollment for any contact in the specified list
+- `evaluate_branch_condition()` Postgres function for consistent server-side branch evaluation
+
+**Sample workflows (seeded):**
+1. **Welcome Series** — form_submitted → welcome email → 1d delay → onboarding tips → 3d delay → guide email → add to list → exit
+2. **Content Delivery** — guide_downloaded → 30min delay → related content → wait_for_event (7d) → branch (engaged/not) → exit
+3. **Quiz Follow-up Nurture** — quiz_completed → results email → 2d delay → branch (score ≥ 80) → personalised path → 4d delay → final email → exit
+4. **Re-engagement** — contact_inactive (30d) → re-engagement email → wait_for_event (email_opened, 7d) → branch → segment/remove → exit
+
+**Pages:** Automations list · Workflow builder (4-step wizard) · Workflow detail (analytics + builder + enrollments) · Event explorer
+
+**API routes:** `/api/automations` · `/api/automations/[id]` · `/api/events`
+
+---
+
+### Phase 4 — Extension points (planned)
+
+Interfaces defined in `src/lib/extensions/index.ts`. Register an adapter with `registerExtension(key, adapter)` — call sites use the convenience helpers without null-checking.
+
+| Extension key | Capability |
+|---|---|
+| `leadScoring` | Score contacts 0–100 from engagement + firmographic signals |
+| `ai` | Generate email copy, contact summaries, predict send times |
+| `abTest` | Subject / content experiments with automatic winner selection |
+| `doubleOptIn` | GDPR confirmation flow with token-based verification |
+| `dataExport` | Async export to CSV / JSONL / Parquet → S3 / BigQuery / Snowflake |
+| `vatValidation` | VIES / HMRC VAT lookup for B2B company records |
+| `billing` | Invoice sync from Stripe / Mollie |
+| `support` | Ticket sync from Zendesk / Intercom / Plain |
+| `affiliate` | Referral tracking and commission calculation |
+| `sendTime` | Per-contact ML-predicted optimal send window |
 
 ---
 
@@ -43,145 +121,62 @@ Run the database:
 
 | Layer | Choice |
 |---|---|
-| Framework | Next.js 15 (App Router) |
-| Language | TypeScript |
-| Database | Supabase (Postgres) |
-| Styling | Tailwind CSS |
-| Auth | Supabase Auth (Phase 2) |
-
----
+| Framework | Next.js 16 App Router (TypeScript) |
+| Styling | Tailwind CSS + custom component library (no shadcn) |
+| Charts | Recharts |
+| Database | Supabase (Postgres) with Row Level Security |
+| Auth | Supabase Auth (SSR server client via `@supabase/ssr`) |
+| Email | Provider-agnostic (Postmark / SendGrid / SES via webhook + sync job) |
 
 ## Project structure
 
 ```
 src/
-├── app/
-│   ├── (crm)/                     # CRM shell (sidebar layout)
-│   └── api/                       # REST API routes
-├── components/
-│   ├── ui/                        # Button, Badge, Table, Dialog, etc.
-│   └── layout/                    # Sidebar, PageHeader
-└── lib/
-    ├── types/index.ts             # All TypeScript types
-    ├── constants.ts               # Countries, languages, lifecycle stages
-    ├── utils.ts                   # Helpers
-    ├── mock-data.ts               # Dev/demo fallback data
-    └── supabase/                  # Browser + server clients
+  app/
+    (crm)/                  — All CRM pages (shared sidebar layout)
+      dashboard/ contacts/ companies/ projects/
+      lists/ segments/ forms/ compliance/
+      campaigns/ templates/ suppression/ deliverability/ reports/
+      automations/ events/
+    api/                    — REST routes (mock fallback when Supabase absent)
+  components/
+    ui/                     — Button, Badge, Card, Table, Input, …
+    layout/                 — Sidebar, PageHeader
+    campaigns/              — BlockEditor, CampaignStats
+    reports/                — MetricsChart, ReportFilterBar
+    automations/            — WorkflowBuilder, WorkflowStats
+  lib/
+    types/
+      index.ts              — Phase 1 types
+      campaigns.ts          — Phase 2 types
+      automations.ts        — Phase 3 types + extension point interfaces
+    mock-data.ts            — Phase 1 seed data
+    mock-data-campaigns.ts  — Phase 2 seed data
+    mock-data-automations.ts — Phase 3 seed data + 4 sample workflows
+    email-eligibility.ts    — Send eligibility pipeline
+    extensions/index.ts     — Extension registry + adapter interfaces
+    supabase/               — Server + browser Supabase clients
+    utils.ts                — cn(), normalizeEmail(), formatDate(), …
+    constants.ts            — European countries, languages, stages, …
 supabase/
-├── migrations/001_initial_schema.sql
-└── seed.sql
+  migrations/
+    001_initial_schema.sql
+    002_campaigns.sql
+    003_automations.sql
 ```
 
----
-
-## Database schema
-
-| Table | Purpose |
-|---|---|
-| `projects` | Brands / markets |
-| `contacts` | Deduplicated by `email_normalized` |
-| `companies` | B2B companies with VAT |
-| `contact_projects` | Contact ↔ project many-to-many |
-| `lists` | Static subscriber lists |
-| `contact_lists` | Contact ↔ list many-to-many |
-| `segments` | Dynamic JSONB-condition groups |
-| `consents` | GDPR consent events (immutable audit trail) |
-| `forms` | Ingestion forms with field definitions |
-| `submissions` | Raw form submissions |
-| `activities` | Append-only event log |
-| `tasks` | Manual tasks |
-| `deals` | Lightweight pipeline |
-| `crm_users` + `memberships` | RBAC (admin/marketing/sales/viewer) |
-
-**Key decisions:**
-- `email_normalized` is the deduplication key — lowercase + trimmed, enforced by UNIQUE constraint
-- Consent records store country/language **at event time** — not from the contact profile (GDPR correct)
-- `withdrawn_at` is stamped but the row is never deleted — full audit trail
-- Segments use JSONB conditions — extend without schema changes
-- RLS enabled on all tables; Phase 2 adds per-membership policies
-
----
-
-## CSV import
-
-`POST /api/contacts/import` — multipart form with a `file` field.
-
-Required: `email` | Optional: `first_name`, `last_name`, `phone`, `country`, `language`, `lifecycle_stage`, `source`
-
-Uses Postgres `UPSERT ON CONFLICT (email_normalized)` for safe re-import.
-
----
-
-## Roles
-
-| Role | Access |
-|---|---|
-| `admin` | Full access across all projects |
-| `marketing` | Contacts, lists, segments, forms, consents |
-| `sales` | Contacts (read), tasks, deals |
-| `viewer` | Read-only |
-
----
-
-## Extension points for Phase 2
-
-### Email automation
-- `email_campaigns` table (template, schedule, segment_id)
-- `campaign_sends` for delivery tracking (opened_at, clicked_at, bounced_at)
-- Provider integration via `/api/campaigns/send` (Postmark / Resend / SendGrid)
-
-### Auth
-- Supabase Auth + `/app/(auth)/login`
-- RLS policies tied to `auth.uid()` + memberships
-- `middleware.ts` route protection
-
-### Form builder
-- Drag-and-drop field editor on the Forms page
-- Public `/forms/[slug]` route for embedded forms
-- Complete form submission ingestion pipeline
-
-### Reporting
-- Recharts already installed — add time-series charts to dashboard
-- Deliverability reports from `campaign_sends`
-
-### GDPR Phase 2
-- Right-to-erasure workflow (Art. 17) — anonymize fields, preserve consent audit trail
-- Data portability export (Art. 20)
-- DPA tracking table
-
----
-
-## Getting started (original Next.js instructions)
-
-First, run the development server:
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # mock mode — no Supabase needed
+
+# With Supabase:
+cp .env.example .env.local
+# Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
+# Apply migrations in order: 001 → 002 → 003
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Mock mode
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Every API route calls `isSupabaseConfigured()` before any DB access. If the env vars are absent, the route falls back to the in-memory mock data in `src/lib/mock-data*.ts`. The full UI is usable for demos and local development without any backend setup.
